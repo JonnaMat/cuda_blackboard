@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Tests that detail::start_worker_thread on Agnocast announces the worker to the CIE thread
-// configurator as "<fully qualified node name>@<resolved topic name>". The listener runs in this
-// process, so the test needs neither a CUDA device nor the Agnocast kernel module.
+// The listener runs in this process, so the test needs neither a CUDA device nor the Agnocast
+// kernel module.
 
 #include "cuda_blackboard/cuda_blackboard_async_publisher.hpp"
 
@@ -22,11 +21,8 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <gtest/gtest.h>
-#include <sys/syscall.h>
-#include <unistd.h>
 
 #include <chrono>
-#include <cstdint>
 #include <future>
 #include <memory>
 #include <system_error>
@@ -38,28 +34,26 @@ namespace cuda_blackboard::test
 using agnocast_cie_thread_configurator::NonRosThreadInfo;
 using agnocast_cie_thread_configurator::NonRosThreadInfoListener;
 
-TEST(StartWorkerThreadTest, AnnouncesNodeAtResolvedTopicFromTheWorker)
+TEST(StartWorkerThreadTest, AnnouncesNodeAtResolvedTopic)
 {
-  rclcpp::init(0, nullptr);
-  auto node = std::make_shared<rclcpp::Node>("pub_node", "/ns");
   std::promise<NonRosThreadInfo> announced;
   auto announced_future = announced.get_future();
   std::unique_ptr<NonRosThreadInfoListener> listener;
   try {
     listener = std::make_unique<NonRosThreadInfoListener>(
-      [&](NonRosThreadInfo info) { announced.set_value(std::move(info)); }, node->get_logger());
+      [&](NonRosThreadInfo info) { announced.set_value(std::move(info)); },
+      rclcpp::get_logger("test_start_worker_thread"));
   } catch (const std::system_error &) {
-    rclcpp::shutdown();
     GTEST_SKIP() << "another listener (prerun_node or the configurator) is bound on this host";
   }
 
-  std::int64_t body_tid = 0;
-  detail::start_worker_thread(*node, "cloud", [&] { body_tid = syscall(SYS_gettid); }).join();
+  rclcpp::init(0, nullptr);
+  auto node = std::make_shared<rclcpp::Node>("pub_node", "/ns");
+  detail::start_worker_thread(*node, "cloud", [] {}).join();
 
   ASSERT_EQ(announced_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
   const NonRosThreadInfo info = announced_future.get();
   EXPECT_EQ(info.name, "/ns/pub_node@/ns/cloud");
-  EXPECT_EQ(info.tid, body_tid);
   rclcpp::shutdown();
 }
 

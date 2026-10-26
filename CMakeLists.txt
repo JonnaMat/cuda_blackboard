@@ -64,8 +64,7 @@ if(BUILD_TESTING)
     ament_add_gtest(test_cuda_blackboard_async_publisher test/test_cuda_blackboard_async_publisher.cpp)
     target_link_libraries(test_cuda_blackboard_async_publisher cuda_blackboard ${CUDA_LIBRARIES})
 
-    # Agnocast builds only, under the same condition that defines USE_AGNOCAST_ENABLED.
-    if(autoware_agnocast_wrapper_FOUND AND "$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
+    if(autoware_agnocast_wrapper_FOUND)
       ament_add_gtest(test_start_worker_thread test/test_start_worker_thread.cpp
         ENV ENABLE_AGNOCAST=1)
       target_link_libraries(test_start_worker_thread cuda_blackboard
