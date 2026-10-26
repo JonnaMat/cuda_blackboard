@@ -23,8 +23,12 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
+#include <thread>
+#include <utility>
 
 namespace cuda_blackboard::test
 {
@@ -55,6 +59,26 @@ TEST_F(CudaBlackboardAsyncPublisherTest, DeliversUntilDestroyed)
   const int after_destruction = received;
   executor_->spin_some();
   EXPECT_EQ(received, after_destruction);
+}
+
+TEST_F(CudaBlackboardAsyncPublisherTest, CreatesItsWorkerWithTheGivenFactory)
+{
+  int calls = 0;
+  CudaBlackboardAsyncPublisher<CudaPointCloud2> publisher(
+    *pub_node_, "test_cloud", [&](std::function<void()> && body) {
+      ++calls;
+      return std::thread(std::move(body));
+    });
+  EXPECT_EQ(calls, 1);
+}
+
+TEST_F(CudaBlackboardAsyncPublisherTest, RejectsANullFactoryAndANonJoinableThread)
+{
+  using Publisher = CudaBlackboardAsyncPublisher<CudaPointCloud2>;
+  EXPECT_THROW(Publisher(*pub_node_, "test_cloud", nullptr), std::invalid_argument);
+  EXPECT_THROW(
+    Publisher(*pub_node_, "test_cloud", [](std::function<void()> &&) { return std::thread(); }),
+    std::invalid_argument);
 }
 
 }  // namespace cuda_blackboard::test

@@ -11,13 +11,28 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
 
 namespace cuda_blackboard
 {
+
+/// Creates a thread from a given thread body. Lets callers hand worker threads to an external
+/// thread manager, for example to control their scheduling policy.
+using thread_factory_t = std::function<std::thread(std::function<void()> && thread_body)>;
+
+/// The default thread factory, which creates plain `std::thread`s.
+struct StdThreadFactory
+{
+  std::thread operator()(std::function<void()> && thread_body) const
+  {
+    return std::thread(std::move(thread_body));
+  }
+};
 
 /// A CudaBlackboardPublisher whose publish() returns at once: the message goes into a single-slot
 /// mailbox and a worker thread owned by this object does the publish (D2H copy and serialization
@@ -28,11 +43,23 @@ template <typename T>
 class CudaBlackboardAsyncPublisher
 {
 public:
-  CudaBlackboardAsyncPublisher(rclcpp::Node & node, const std::string & topic_name)
+  /// @param thread_factory Creates the worker thread. Must not be null and must return a joinable
+  /// thread. A node under the Agnocast CIE thread configurator must pass a factory that calls
+  /// `agnocast_cie_thread_configurator::spawn_non_ros2_thread`. A plain `std::thread` is invisible
+  /// to the configurator and keeps the scheduling of the thread that constructs this publisher.
+  CudaBlackboardAsyncPublisher(
+    rclcpp::Node & node, const std::string & topic_name,
+    thread_factory_t thread_factory = StdThreadFactory{})
   : logger_(node.get_logger()), publisher_(node, topic_name)
   {
+    if (!thread_factory) {
+      throw std::invalid_argument("Thread factory must not be null");
+    }
     // Last, so that a throwing constructor never leaves a joinable thread behind.
-    worker_ = std::thread([this, topic_name] { run(topic_name); });
+    worker_ = thread_factory([this, topic_name] { run(topic_name); });
+    if (!worker_.joinable()) {
+      throw std::invalid_argument("Thread factory must return a joinable thread");
+    }
   }
 
   ~CudaBlackboardAsyncPublisher()
