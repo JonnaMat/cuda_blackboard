@@ -42,6 +42,7 @@ ament_auto_add_library(cuda_blackboard SHARED
     src/cuda_message_impl_detail.cpp
     src/cuda_pointcloud2.cpp
     src/cuda_blackboard_publisher.cpp
+    src/cuda_blackboard_async_publisher.cpp
     src/cuda_blackboard_subscriber.cpp
     src/cuda_mem_pool_context.cpp
 )
